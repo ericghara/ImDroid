@@ -5,7 +5,7 @@ ImDroid allows iPhone users to harmoniously share photos with their Android frie
 <br><br>
 To "Androidize" photos ImDroid does 2 things:
 <ol>
-<li>Convert the image file from HEIC to JPG format</li>
+<li>Convert the photo from HEIC to JPG format</li>
 <li>Rename the photo based on the date it was taken (instead of sequentially)</li>
 </ol>
 
