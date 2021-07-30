@@ -10,7 +10,7 @@ class AppWindow(QtWidgets.QMainWindow):
         self.thrdPool = [] # List of worker threads
         self.workers = [] # list of worker objects
         self.queue = [] # queue of files to convert
-        self.MAXTHREADS = QtCore.QThread.idealThreadCount()-1
+        self.MAXTHREADS = QtCore.QThread.idealThreadCount()
         self.form = QtWidgets.QWidget()
         self.setCentralWidget(self.form)
         self.layout = QtWidgets.QVBoxLayout(self.form)
@@ -64,8 +64,8 @@ class AppWindow(QtWidgets.QMainWindow):
         Mod = ImageModify
         source = self.widgDict["input"]["lEdit"].text()
         dest = self.widgDict["output"]["lEdit"].text()
-        inputFiles = Mod.findIMG(source, "jpg")
-        IO_Dict = Mod.makeOutPath(inputFiles, "gif", dest, ANDROID)
+        inputFiles = Mod.findIMG(source, "HEIC")
+        IO_Dict = Mod.makeOutPath(inputFiles, "jpg", dest, ANDROID)
         IO_list = Mod.genIOList(IO_Dict)
         self.queue[:0] = IO_list # prepend queue
         if len(self.workers)  == 0:
@@ -159,9 +159,9 @@ if __name__ == "__main__":
     WL = WaitList()
     app.show()
     qapp.exec_()
-    WL.printIt() # For some reason this causes a crash on exit but it's only a diagnostic.  Completely unsure why, has something to do with items= line
-    print("Workers: %d" % len(app.workers))
-    print("Threads: %d" % len(app.thrdPool))
+    #WL.printIt() # For some reason this causes a crash on exit but it's only a diagnostic.  Completely unsure why, has something to do with items= line
+    #print("Workers: %d" % len(app.workers))
+    #print("Threads: %d" % len(app.thrdPool))
 
 
 
