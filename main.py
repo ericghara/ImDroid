@@ -5,35 +5,35 @@ from src import ImageModify, SecondaryWindows
 from time import time #delete later
 
 class AppWindow(QtWidgets.QMainWindow):
+
     def __init__(self):
         super().__init__()
-        self.thrdPool = [] # List of worker threads
-        self.workers = [] # list of worker objects
-        self.queue = [] # queue of files to convert
-        self.MAXTHREADS = QtCore.QThread.idealThreadCount()
+        global Mod
+        Mod = ImageModify.ImgFind()
         self.form = QtWidgets.QWidget()
+        QtCore.QMetaObject.connectSlotsByName(self.form)
         self.setCentralWidget(self.form)
         self.layout = QtWidgets.QVBoxLayout(self.form)
         SecWins = SecondaryWindows.BrowseDialog()
         self.widgDict = {"input" : {},
                             "output" : {},
                             "lowerButts" : {}
-                         } #IO dict is where button widgets live
+                         }  #IO dict is where button widgets live
         self.HOMEDIR = str(Path.home())
         self.widgTextDict = {"input" : {
                                         "label" : "Source Directory",
-                                        "lEdit" : self.HOMEDIR+"\\Desktop\\Test",
+                                        "lEdit" : self.HOMEDIR,
                                         "browseButt" : "Browse"
                                        },
                             "output" : {
                                         "label": "Output Directory",
-                                        "lEdit": self.HOMEDIR+"\\Desktop\\output",
+                                        "lEdit": self.HOMEDIR,
                                         "browseButt": "Browse"
                                         },
                             "lowerButts" : {
                                             "convertButt" : "Convert!"
                                             }}  #This is where default widget text lives.  Key names need to be the same as widgDict
-        for ky in self.widgDict.keys(): # This populates self.form with widgets and layouts
+        for ky in self.widgDict.keys():  # This populates self.form with widgets and layouts
             wDict = {}
             wDict["layout"] = QtWidgets.QHBoxLayout()
             if (ky == "input" or ky == "output"): # create input and output widgets
@@ -47,7 +47,7 @@ class AppWindow(QtWidgets.QMainWindow):
                 wDict["stretch0"] = 1
                 wDict["convertButt"] = QtWidgets.QPushButton(self.form)
                 wDict["convertButt"].clicked.connect(self.convertButtClick)
-            for k, w in wDict.items(): # add widgets, layouts and stretch
+            for k, w in wDict.items():  # add widgets, layouts and stretch
                 if k == "layout":
                     self.layout.addLayout(w)
                 elif "stretch" in k.lower():  # stretch values are just ints.  This departs from everything else whose value is a widget
@@ -60,17 +60,12 @@ class AppWindow(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot()
     def convertButtClick(self):
+        iExts = ["heic"]
+        oExt = "gif"
         ANDROID = True
-        Mod = ImageModify
-        source = self.widgDict["input"]["lEdit"].text()
-        dest = self.widgDict["output"]["lEdit"].text()
-        inputFiles = Mod.findIMG(source, "HEIC")
-        IO_Dict = Mod.makeOutPath(inputFiles, "jpg", dest, ANDROID)
-        IO_list = Mod.genIOList(IO_Dict)
-        self.queue[:0] = IO_list # prepend queue
-        if len(self.workers)  == 0:
-            self.assignThreads()
-        print("%d Pictures added to queue" % len(IO_list))
+        iPath = self.widgDict["input"]["lEdit"].text()
+        oPath = self.widgDict["output"]["lEdit"].text()
+        Mod.convert(iPath,iExts,oPath,oExt,ANDROID)
 
     def browseButtClick(self):
         SecWins = SecondaryWindows.BrowseDialog()
@@ -78,59 +73,9 @@ class AppWindow(QtWidgets.QMainWindow):
         ky, trash = name.split("_",1)
         leWidg = self.widgDict[ky]["lEdit"]
         path = SecWins.dialog(leWidg.text())
-        if "\\" in self.HOMEDIR: # Dialog returns unix style / even in windows environment
+        if "\\" in self.HOMEDIR:  # Dialog returns unix style / even in windows environment
             path = path.replace("/","\\")
         leWidg.setText(path)
-
-
-
-    def findIdleThreads(self):
-        # Failure to add deadline leads to a deadlock/starvation of threads.
-        # Without deadline, trd.wait() will indefinitely wait for threads to
-        # finish, meanwhile blocking trd.quit() commands from the very threads
-        # it's waiting on *facepalm*
-        return [thrd for thrd in self.thrdPool if thrd.wait(1)]
-
-    @QtCore.pyqtSlot()
-    def assignThreads(self,trd=None):
-        idleList = self.findIdleThreads()
-        WL.add(len(idleList), len(self.queue))
-        while len(self.queue) > 0: # First use up existing idle threads
-            # if len(idleList) > 0:
-            #     self.startThread(idleList.pop())
-            if len(idleList) > 0:
-                trd = idleList.pop()
-                self.startThread(trd)
-            elif len(self.thrdPool) < self.MAXTHREADS: # Next consider making new threads
-                trd = QtCore.QThread()
-                self.thrdPool.append(trd)
-                self.startThread(trd)
-            else:
-                # Won't be able to clear queue with available threads
-                # Will be called by stop thread when next thread clears
-                break
-
-    @QtCore.pyqtSlot()
-    def startThread(self, trd):
-            i, o = self.queue.pop()
-            wkr = ImageModify.ConvertWorker(i,o)
-            wkr.moveToThread(trd)
-            wkr.finished.connect(lambda: self.stop_thread(trd, wkr))
-            trd.started.connect(wkr.convertImg)
-            trd.finished.connect(wkr.deleteLater)
-            trd.start()
-            self.workers.append(wkr)
-
-    @QtCore.pyqtSlot()
-    def stop_thread(self, trd, wkr):
-        wIdx = self.workers.index(wkr)
-        del self.workers[wIdx]
-        trd.quit()
-        trd.wait(1500) # Waits for thread to become ready
-        self.assignThreads()
-        #print("Stopped thread #%d: %r" % (self.threads.index(trd),trd.wait(QtCore.QDeadlineTimer(50))))
-
-
 
 class WaitList:
     def __init__(self):
@@ -162,7 +107,3 @@ if __name__ == "__main__":
     #WL.printIt() # For some reason this causes a crash on exit but it's only a diagnostic.  Completely unsure why, has something to do with items= line
     #print("Workers: %d" % len(app.workers))
     #print("Threads: %d" % len(app.thrdPool))
-
-
-
-
