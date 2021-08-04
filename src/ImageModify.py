@@ -24,12 +24,12 @@ extKEY = "extension"
 opKEY = "out path"
 
 
-class ImgFind:
-
+class ImgFind(QtCore.QObject):
+    sndFilename = QtCore.pyqtSignal(tuple)
     def __init__(self):
         global Boss
         super().__init__()
-        Boss = ConvertBoss()
+        Boss = ConvertBoss(self)
         self.IO_dict = {}
         self.env = {}
 
@@ -90,8 +90,32 @@ class ImgFind:
         fileDict[rootKEY] = fRoot
         return fileDict
 
-class ConvertBoss:
-    def __init__(self):
+    @QtCore.pyqtSlot(tuple)
+    def chkFileConflict(self, args):
+        path, filename, wkr = args
+        pathList = [*self.env.keys()]
+        if path in pathList:
+            fileList = [*self.env[path].keys()]
+            modifier = ""
+            cnt = 0
+            stem, ext = splitext(filename)
+            while stem+modifier+ext in fileList:
+                modifier = " (%i)" % cnt
+                cnt +=1
+            filename = stem+modifier+ext
+            newStem = stem+modifier
+        else:
+            # This is weird and shouldn't happen
+            print("Warning %r: %s path was expected but not found in env" % (currentframe().f_code.co_name, path))
+            self.env[path] = {}
+        self.env[path][filename] = {}
+        self.sndFilename.emit((newStem,wkr))
+
+
+class ConvertBoss(QtCore.QObject):
+    def __init__(self, parent):
+        global Mod
+        Mod = parent
         super().__init__()
         self.thrdPool = []  # List of worker threads
         self.workers = []  # list of worker objects
@@ -143,7 +167,7 @@ class ConvertBoss:
     @QtCore.pyqtSlot()
     def assignThreads(self,trd=None):
         idleList = self.findIdleThreads()
-        while self.queueEmpty() == False:
+        while self.queueEmpty() is False:
                 if len(idleList) > 0:
                     trd = idleList.pop()
                 elif len(self.thrdPool) < self.MAXTHREADS: # Next consider making new threads
@@ -159,21 +183,31 @@ class ConvertBoss:
                     self.assignThreads()
                     break
                 self.startThread(trd, iImgPath, outDict)
+        if (self.queueEmpty() is True) and (len(self.workers) == 0):
+            print("Conversion Complete")
+            #print("Workers: %d" % len(self.workers))
+            #print("Threads: %d" % len(self.thrdPool))
 
     @QtCore.pyqtSlot()
     def startThread(self, trd, iImgPath, outDict):
             wkr = ConvertWorker(iImgPath,outDict)
+            self.workers.append(wkr)
             wkr.moveToThread(trd)
+            sgnl = Mod.sndFilename
             wkr.finished.connect(lambda: self.stopThread(trd, wkr))
-            trd.started.connect(wkr.convertImg)
+            wkr.chkFilename.connect(Mod.chkFileConflict)
+            sgnl.connect(wkr.convertImg,QtCore.Qt.UniqueConnection)
+            trd.started.connect(wkr.prepImg)
             trd.finished.connect(wkr.deleteLater)
             trd.start()
-            self.workers.append(wkr)
+
 
     @QtCore.pyqtSlot()
     def stopThread(self, trd, wkr):
-        wIdx = self.workers.index(wkr)
-        del self.workers[wIdx]
+        if wkr in self.workers: #wkr.deleteLater didn't work, seems to be most common scenario
+            wkr.disconnect()
+            wIdx = self.workers.index(wkr)
+            del self.workers[wIdx]
         trd.quit()
         trd.wait(1500) # Waits for thread to become ready
         self.assignThreads()
@@ -182,35 +216,32 @@ class ConvertBoss:
 
 class ConvertWorker(QtCore.QObject):
     finished = QtCore.pyqtSignal()
+    chkFilename = QtCore.pyqtSignal(tuple)
     def __init__(self, iImgPath, outDict):
         super().__init__()
         self.iImgPath = iImgPath
-        self.oRoot = outDict[rootKEY]
+        self.oStem = outDict[rootKEY]
         self.oPath = outDict[opKEY]
         self.oExt = outDict[extKEY]
+        self.iImg = None # Reserved  for the wand image object
 
     @QtCore.pyqtSlot()
-    def convertImg(self):
-        oFormat = self.oExt[1:] # remove period from ext
+    def prepImg(self):
         try:
-            iImg = Image(filename=self.iImgPath)
+            self.iImg = Image(filename=self.iImgPath)
         except Exception:
             print("Error %r: %s could not be opened.  This file will be skipped." % (currentframe().f_code.co_name, self.iImgPath))
             self.finished.emit()
             return -1
-        if self.oRoot is None:
-            self.oRoot = self.toAndroidRoot(iImg.metadata.items())
-            if self.oRoot == -1:
+        if self.oStem is None:
+            self.oStem = self.toAndroidRoot(self.iImg.metadata.items())
+            if self.oStem == -1:
                 print("Warning %r: %s could not find exif:DateTime. Preserving original filename." % (currentframe().f_code.co_name, self.iImgPath))
-                self.oRoot = self.preserveRoot()
-        oImgPath = self.makeImgPath(self.oPath, self.oExt, self.oRoot)
-        print("Started Conversion of %s to %s" % (self.iImgPath, oImgPath))
-        with iImg.convert(oFormat) as oImg:
-            if oFormat.lower() == "pdf":
-                oImg.transform_colorspace("srgb")
-            oImg.save(filename=oImgPath)
-            print("Successfully converted %s to %s" % (self.iImgPath, oImgPath))
-        self.finished.emit()
+                self.oStem = self.preserveRoot()
+        fileName = self.oStem + self.oExt
+        self.chkFilename.emit((self.oPath, fileName, self))
+        #print("started conversion")
+
 
     @QtCore.pyqtSlot()
     def preserveRoot(self):
@@ -232,11 +263,22 @@ class ConvertWorker(QtCore.QObject):
             print("Error: Couldn't find DateTime key in exif data")
             return -1
 
-    @QtCore.pyqtSlot()
-    def makeImgPath(self, path, ext, root):
-        fileName = root+ext
-        imgPath = join(path,fileName)
-        return imgPath
+    @QtCore.pyqtSlot(tuple)
+    def convertImg(self, arg):
+        self.oStem, wkr = arg
+        if wkr is self:
+            oFormat = self.oExt[1:]  # remove period from ext
+            filename = self.oStem+self.oExt
+            oImgPath = join(self.oPath,filename)
+            #print("Started Conversion of %s to %s" % (self.iImgPath, oImgPath))
+            with self.iImg.convert(oFormat) as oImg:
+                if oFormat.lower() == "pdf":
+                    oImg.transform_colorspace("srgb")
+                oImg.save(filename=oImgPath)
+                print("Successfully converted %s to %s" % (self.iImgPath, oImgPath))
+            self.finished.emit()
+        else: # signal intended for another worker
+            pass
 
 
 

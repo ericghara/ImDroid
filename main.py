@@ -22,12 +22,12 @@ class AppWindow(QtWidgets.QMainWindow):
         self.HOMEDIR = str(Path.home())
         self.widgTextDict = {"input" : {
                                         "label" : "Source Directory",
-                                        "lEdit" : self.HOMEDIR,
-                                        "browseButt" : "Browse"
+                                        "lEdit" : self.HOMEDIR+"\desktop\\test",
+                                        "browseButt" : "Browse",
                                        },
                             "output" : {
                                         "label": "Output Directory",
-                                        "lEdit": self.HOMEDIR,
+                                        "lEdit": self.HOMEDIR+"\\desktop\output",
                                         "browseButt": "Browse"
                                         },
                             "lowerButts" : {
@@ -61,7 +61,7 @@ class AppWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot()
     def convertButtClick(self):
         iExts = ["heic"]
-        oExt = "gif"
+        oExt = "jpg"
         ANDROID = True
         iPath = self.widgDict["input"]["lEdit"].text()
         oPath = self.widgDict["output"]["lEdit"].text()
@@ -105,5 +105,4 @@ if __name__ == "__main__":
     app.show()
     qapp.exec_()
     #WL.printIt() # For some reason this causes a crash on exit but it's only a diagnostic.  Completely unsure why, has something to do with items= line
-    #print("Workers: %d" % len(app.workers))
-    #print("Threads: %d" % len(app.thrdPool))
+
