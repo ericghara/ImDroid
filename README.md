@@ -16,3 +16,5 @@ To "Androidize" photos ImDroid does 2 things:
 * UI is built using Qt
 * Multithreading is implemented using QtThread methods
 
+<h3>Requirements</h3>
+In addition to python packages listed in the requirements.txt, <a href=https://github.com/ImageMagick/ImageMagick>ImageMagick</a> must be installed.
